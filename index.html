@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>scratcher</title>
+  <script src="../jsgame0.js"></script>
+  <style type="text/css" media="screen">
+body {
+  background-color: white;
+  color: black;
+}
+.hidden {
+  display: none;
+}
+#original {
+  margin-left: 1em;
+}
+  </style>
+</head>
+
+<body>
+<section id="imageLoader" class="hidden">
+  <img class="hidden" src="images/symbol0.png" alt="symbol0" data-name="symbol0">
+  <img class="hidden" src="images/symbol1.png" alt="symbol1" data-name="symbol1">
+  <img class="hidden" src="images/symbol2.png" alt="symbol2" data-name="symbol2">
+  <img class="hidden" src="images/symbol3.png" alt="symbol3" data-name="symbol3">
+</section>
+
+<main>
+<h1>scratcher</h1>
+
+<canvas id="screen">
+The game screen appears here if your browser supports the Canvas API.
+</canvas>
+<section id="controls">
+  <button type="button" id="reset">Reset</button>
+  <button type="button" id="pause">Pause</button>
+</section>
+
+<p>Match the same 3 symbols horizontally, vertically, or diagonally in each group of 3 squares without revealing the other symbols.</p>
+
+<h2>Attribution</h2>
+
+<p>Images licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode">Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported</a>.</p>
+
+</main>
+
+<script>
+/*
+ * Integer width and height in pixels of each square.
+ */
+const GRID_SIZE = 60;
+
+/*
+ * Integer separation in pixels between each group of 3x3 squares.
+ */
+const GUTTER = 30;
+
+/*
+ * Integer width and height in pixels of each cover.
+ */
+const SCALE = 10;
+
+WIDTH = (GUTTER * 4) + (GRID_SIZE * 9);
+HEIGHT = WIDTH;
+
+/*
+ * Array color of the scratcher.
+ */
+const BACKGROUND_COLOR = [255, 210, 0];
+
+/*
+ * Return a random integer N such that min <= N < max.
+ */
+function getRandomInteger(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor((Math.random() * (max - min)) + min);
+}
+
+class Board {
+  constructor(width, height, fill = 0) {
+    if (typeof width !== 'number') {
+      throw new TypeError('width must be a positive number.');
+    }
+    if (width <= 0) {
+      throw new RangeError('width must be a positive number.');
+    }
+    if (typeof height !== 'number') {
+      throw new TypeError('height must be a positive number.');
+    }
+    if (height <= 0) {
+      throw new RangeError('height must be a positive number.');
+    }
+
+    this.width = width;
+    this.height = height;
+    this.values = new Uint8Array(this.width * this.height);
+    this.values.fill(fill);
+  }
+
+  /*
+   * Return the index for coordinates (x, y).
+   */
+  _coordinatesToIndex(x, y) {
+    return (x + (y * this.width));
+  }
+
+  getAt(x, y) {
+    if (typeof x !== 'number') {
+      throw new TypeError('x must be a non-negative number.');
+    }
+    if (x < 0) {
+      throw new RangeError('x must be a non-negative number.');
+    }
+    if (typeof y !== 'number') {
+      throw new TypeError('y must be a non-negative number.');
+    }
+    if (y < 0) {
+      throw new RangeError('y must be a non-negative number.');
+    }
+
+    let index = this._coordinatesToIndex(x, y);
+    if (index < this.values.length) {
+      return this.values[index];
+    }
+    else {
+      throw new RangeError('Coordinates (x, y) are out of range.');
+    }
+  }
+
+  setAt(x, y, value) {
+    if (typeof x !== 'number') {
+      throw new TypeError('x must be a non-negative number.');
+    }
+    if (x < 0) {
+      throw new RangeError('x must be a non-negative number.');
+    }
+    if (typeof y !== 'number') {
+      throw new TypeError('y must be a non-negative number.');
+    }
+    if (y < 0) {
+      throw new RangeError('y must be a non-negative number.');
+    }
+
+    let index = this._coordinatesToIndex(x, y);
+    if (index < this.values.length) {
+      this.values[index] = value;
+    }
+    else {
+      throw new RangeError('Coordinates (x, y) are out of range.');
+    }
+  }
+}
+
+/*
+ * Return an array of Rect objects for a 3x3 grid of 3x3 squares.
+ */
+function getGrid() {
+  let result = [],
+      top = GUTTER,
+      left, r;
+  for (let i = 0; i < 3; i++) {
+    left = GUTTER;
+    for (let j = 0; j < 3; j++) {
+      for (let y = top; y < (top + (GRID_SIZE * 3)); y += GRID_SIZE) {
+        for (let x = left; x < (left + (GRID_SIZE * 3)); x += GRID_SIZE) {
+          r = new Rect(x, y, GRID_SIZE, GRID_SIZE);
+          r.symbol = getRandomInteger(0, 4);
+          result.push(r);
+        }
+      }
+
+      left += (GRID_SIZE * 3) + GUTTER;
+    }
+    top += (GRID_SIZE * 3) + GUTTER;
+  }
+
+  return result;
+}
+
+let cover, grid, mouseDown;
+
+function reset() {
+  cover = new Board(Math.floor(WIDTH / SCALE), Math.floor(HEIGHT / SCALE), 4);
+  grid = getGrid();
+  mouseDown = false;
+}
+
+function draw() {
+  screen.clear(BACKGROUND_COLOR);
+
+  for (let r of grid) {
+    let actor = new Actor('symbol' + r.symbol);
+    actor.center = r.center;
+    actor.draw();
+  }
+
+  let color = BACKGROUND_COLOR.slice(),
+      value;
+  color.push(255);
+  for (let y = 0; y < cover.height; y++) {
+    for (let x = 0; x < cover.width; x++) {
+      value = cover.getAt(x, y);
+      if (value === 4) {
+        color[3] = 255;
+      }
+      else if (value === 3) {
+        color[3] = 127;
+      }
+      else if (value === 2) {
+        color[3] = 64;
+      }
+      else if (value === 1) {
+        color[3] = 32;
+      }
+      else {
+        color[3] = 0;
+      }
+      screen.draw.filled_rect(new Rect(x * SCALE, y * SCALE, SCALE, SCALE), color);
+    }
+  }
+
+  for (let r of grid) {
+    screen.draw.rect(r, 'black', 4);
+  }
+}
+
+function on_mouse_down(pos) {
+  mouseDown = true;
+  let x = Math.floor(pos[0] / SCALE),
+      y = Math.floor(pos[1] / SCALE);
+  cover.setAt(x, y, cover.getAt(x, y) - 1);
+}
+
+function on_mouse_move(pos) {
+  if (mouseDown) {
+    let x = Math.floor(pos[0] / SCALE),
+        y = Math.floor(pos[1] / SCALE);
+    cover.setAt(x, y, cover.getAt(x, y) - 1);
+  }
+}
+
+function on_mouse_up(pos) {
+  mouseDown = false;
+}
+
+window.addEventListener('load', (event) => {
+  screen.init();
+});
+</script>
+</body>
+
+</html>
